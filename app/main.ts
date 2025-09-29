@@ -13,8 +13,9 @@ const server: net.Server = net.createServer((connection: net.Socket) => {
         
         const command=(parsed[0] as string).toUpperCase();
         const args=parsed.slice(1).map(a => a as string);
-        const mp: { [key: string]: string|null } = {};
         
+        const mp: { [key: string]: string|null } = {};
+
         switch(command){
             case "PING": {
                 connection.write(`+PONG\r\n`);
