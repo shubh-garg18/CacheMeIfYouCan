@@ -10,6 +10,7 @@ export function RESPparser(chunk:string):Types.ParseResult{
     throw new Error("Unknown RESP type");
 }
 
+// Example: "+OK\r\n"
 function stringParser(input:string):Types.ParseResult{
     const end=input.indexOf("\r\n")
     return {value: input.slice(1,end),
@@ -17,6 +18,7 @@ function stringParser(input:string):Types.ParseResult{
     };
 }
 
+// Example: ":1000\r\n"
 function integerParser(input:string):Types.ParseResult{
     const end=input.indexOf("\r\n")
     return {value: parseInt(input.slice(1,end),10),
@@ -24,6 +26,7 @@ function integerParser(input:string):Types.ParseResult{
     };
 }
 
+// Example: "$6\r\nfoobar\r\n"
 function bulkParser(input:string):Types.ParseResult{
     const end=input.indexOf("\r\n");
     const length=parseInt(input.slice(1,end),10);
@@ -33,6 +36,7 @@ function bulkParser(input:string):Types.ParseResult{
     };
 }
 
+// Example: "*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n"
 function arrayParser(input:string):Types.ParseResult{
     const end=input.indexOf("\r\n");
     const size=parseInt(input.slice(1,end),10);
