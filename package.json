@@ -1,6 +1,7 @@
 {
-  "name": "@codecrafters/redis",
-  "description": "Build your own Redis challenge, from CodeCrafters",
+  "name": "Redis",
+  "description": "Build your own Redis",
+  "author": "Shubh Garg",
   "type": "module",
   "scripts": {
     "dev": "bun run app/main.ts"
