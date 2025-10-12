@@ -1,7 +1,7 @@
 import * as net from "net"
 export type RESPmessage=string|number|null|RESPmessage[];
 export type ParseResult = { value: RESPmessage, length: number };
-export type CommandHandler = (connection: net.Socket, args: string[]) => void;
+export type CommandHandler = (connection: net.Socket, args: string[], returnVal?:boolean) => string|void;
 
 
 //Lists → Sorted Sets → Transactions → RDB persistence → Streams → Pub/Sub → Replication

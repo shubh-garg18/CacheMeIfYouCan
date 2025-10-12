@@ -14,11 +14,17 @@ export function handleEcho(connection: net.Socket, args: string[]): void {
     connection.write(`$${arg.length}\r\n${arg}\r\n`);
 }
 
-export function handleSet(connection: net.Socket, args: string[]): void {
+export function handleSet(connection: net.Socket, args: string[],returnVal:boolean=false): string|void {
     console.error("SET command received");
+
     const key = args[0], value = args[1];
     setMap[key] = value;
-    connection.write("+OK\r\n");
+
+    const resp=`+OK\r\n`;
+    if(returnVal) return resp;
+
+    connection.write(resp);
+
     if (args.length > 2) {
         const subCommand = args[2].toUpperCase();
         const time = Number(args[3]);
@@ -31,14 +37,22 @@ export function handleSet(connection: net.Socket, args: string[]): void {
     }
 }
 
-export function handleGet(connection: net.Socket, args: string[]): void {
+export function handleGet(connection: net.Socket, args: string[], returnVal:boolean=false): string|void {
     console.error("GET command received");
+
     const key = args[0];
     const value = setMap[key] ?? null;
+    
     if (value === null) {
-        connection.write("$-1\r\n");
+        const resp=`$-1\r\n`;
+
+        if(returnVal) return resp;
+        connection.write(resp);
     } else {
-        connection.write(`$${value.length}\r\n${value}\r\n`);
+        const resp=`$${value.length}\r\n${value}\r\n`;
+
+        if(returnVal) return resp;
+        connection.write(resp);
     }
 }
 

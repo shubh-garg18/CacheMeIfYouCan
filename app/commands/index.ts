@@ -1,7 +1,34 @@
 import * as net from "net";
-import { handlePing, handleEcho, handleSet, handleGet } from "./basics";
-import { handleRpush, handleLrange, handleLpush, handleLlen, handleLpop, handleBlpop } from "./lists";
-import { handleZadd, handleZrank, handleZrange, handleZcard, handleZscore, handleZrem } from "./sortedSet";
+
+import { handlePing, 
+    handleEcho, 
+    handleSet, 
+    handleGet 
+} from "./basics";
+
+import { handleRpush, 
+    handleLrange, 
+    handleLpush, 
+    handleLlen, 
+    handleLpop, 
+    handleBlpop 
+} from "./lists";
+
+import { 
+    handleZadd, 
+    handleZrank, 
+    handleZrange, 
+    handleZcard, 
+    handleZscore, 
+    handleZrem 
+} from "./sortedSet";
+
+import { handleIncr,
+    handleMulti,
+    handleExec,
+    handleDiscard
+} from "./transaction";
+
 import  * as Types  from "../types";
 
 
@@ -22,14 +49,33 @@ const commandHandlers: { [key: string]: Types.CommandHandler } = {
     "ZCARD": handleZcard,
     "ZSCORE": handleZscore,
     "ZREM": handleZrem,
+    "INCR": handleIncr,
+    "MULTI": handleMulti,
+    "EXEC": handleExec,
+    "DISCARD": handleDiscard,
 };
 
-export function executeCommand(command: string, connection: net.Socket, args: string[]): void {
+export function executeCommand(
+    command: string,
+    connection: net.Socket,
+    args: string[],
+    returnVal = false
+): string | void {
+
     const handler = commandHandlers[command];
-    if (handler) {
-        handler(connection, args);
+
+    if (!handler) {
+        const err = `-ERR unknown command '${command}'\r\n`;
+        if (returnVal) return err;
+        connection.write(err);
+        return;
     }
+    
+    const result = handler(connection, args, returnVal);
+    if (returnVal) return result;
+
 }
+
 
 export function getCommandHandlers(): { [key: string]: Types.CommandHandler } {
     return commandHandlers;
