@@ -14,8 +14,7 @@ import { handleRpush,
     handleBlpop 
 } from "./lists";
 
-import { 
-    handleZadd, 
+import { handleZadd, 
     handleZrank, 
     handleZrange, 
     handleZcard, 
@@ -32,6 +31,12 @@ import { handleIncr,
 import { handleConfigGet, 
     handleKeys 
 } from "./RDBpersistence";
+
+import { handleType, 
+    handleXadd, 
+    handleXrange,
+    handleXread
+} from "./streams";
 
 import  * as Types  from "../types";
 
@@ -59,6 +64,10 @@ const commandHandlers: { [key: string]: Types.CommandHandler } = {
     "DISCARD": handleDiscard,
     "CONFIG": handleConfigGet,
     "KEYS": handleKeys,
+    "TYPE": handleType,
+    "XADD":handleXadd,
+    "XRANGE": handleXrange,
+    "XREAD": handleXread,
 };
 
 export function executeCommand(

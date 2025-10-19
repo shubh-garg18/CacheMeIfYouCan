@@ -3,6 +3,12 @@ export type RESPmessage=string|number|null|RESPmessage[];
 export type ParseResult = { value: RESPmessage, length: number };
 export type CommandHandler = (connection: net.Socket, args: string[], returnVal?:boolean) => string|void;
 
+export type StreamStruct = {
+    [id: string]: {
+        [entryId: string]: { [field: string]: string };
+    };
+};
+
 
 //Lists → Sorted Sets → Transactions → RDB persistence → Streams → Pub/Sub → Replication
 

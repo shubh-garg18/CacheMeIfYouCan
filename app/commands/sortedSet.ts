@@ -151,3 +151,7 @@ export function handleZrem(connection: net.Socket, args: string[]): void {
         connection.write(`:1\r\n`);
     }
 }
+
+export function getSortedSet() : { [key: string]: { [member: string]: number } } {
+    return sortedSet;
+};
