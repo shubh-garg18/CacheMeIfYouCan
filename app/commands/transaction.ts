@@ -8,7 +8,21 @@ export function handleIncr(connection: net.Socket, args: string[], returnVal = f
     console.error(`INCR command received`);
 
     const key = args[0];
-    let value = Number(setMap[key] ?? "0");
+    const item = setMap[key];
+
+    let currentValue = "0";
+    if (item) {
+        // Check expiry
+        if (item.expiry !== undefined && item.expiry < Date.now()) {
+            // Key expired, delete it and use default 0
+            delete setMap[key];
+            currentValue = "0";
+        } else {
+            currentValue = item.value;
+        }
+    }
+
+    let value = Number(currentValue);
 
     if (isNaN(value)) {
         const err = "-ERR value is not an integer or out of range\r\n";
@@ -17,8 +31,14 @@ export function handleIncr(connection: net.Socket, args: string[], returnVal = f
         connection.write(err);
         return;
     }
+    
+
     value++;
-    setMap[key] = value.toString();
+
+    setMap[key] = {
+        value: value.toString(),
+        expiry: item?.expiry
+    };
 
     const resp = `:${value}\r\n`;
     if (returnVal) return resp;
@@ -56,12 +76,13 @@ export function handleExec(connection:net.Socket, args:string[]):void{
         results.push(ans?? `$-1\r\n`);
     }
 
-    connection.write(`*${results.length}\r\n`);
-
+    let response=`*${results.length}\r\n`;
+    
     for(const item of results){
-        connection.write(item);
+        response+=item;
     }
     
+    connection.write(response);
 }
 
 export function handleDiscard(connection:net.Socket, args:string[]):void{

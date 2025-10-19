@@ -29,6 +29,10 @@ import { handleIncr,
     handleDiscard
 } from "./transaction";
 
+import { handleConfigGet, 
+    handleKeys 
+} from "./RDBpersistence";
+
 import  * as Types  from "../types";
 
 
@@ -53,6 +57,8 @@ const commandHandlers: { [key: string]: Types.CommandHandler } = {
     "MULTI": handleMulti,
     "EXEC": handleExec,
     "DISCARD": handleDiscard,
+    "CONFIG": handleConfigGet,
+    "KEYS": handleKeys,
 };
 
 export function executeCommand(
@@ -75,7 +81,6 @@ export function executeCommand(
     if (returnVal) return result;
 
 }
-
 
 export function getCommandHandlers(): { [key: string]: Types.CommandHandler } {
     return commandHandlers;

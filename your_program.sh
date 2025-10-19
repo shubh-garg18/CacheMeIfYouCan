@@ -8,6 +8,9 @@
 
 set -e # Exit early if any commands fail
 
+# Enable debug logging for local runs
+export DEBUG=1
+
 # Copied from .codecrafters/run.sh
 #
 # - Edit this to change how your program runs locally

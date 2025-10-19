@@ -1,7 +1,7 @@
 import * as net from "net";
 
 // Data storage for basic commands
-const setMap: { [key: string]: string | null } = {};
+const setMap: { [key: string]: { value: string; expiry?: number } } = {};
 
 export function handlePing(connection: net.Socket): void {
     console.error("PING command received");
@@ -18,44 +18,52 @@ export function handleSet(connection: net.Socket, args: string[],returnVal:boole
     console.error("SET command received");
 
     const key = args[0], value = args[1];
-    setMap[key] = value;
+    let expiry: number | undefined = undefined;
+    
+    if (args.length > 2) {
+        const subCommand = args[2].toUpperCase();
+        const time = Number(args[3]);
+        if (subCommand === "PX") {
+            expiry=Date.now()+time;
+        }
+    }
+    setMap[key] = { value, expiry };
 
     const resp=`+OK\r\n`;
     if(returnVal) return resp;
 
     connection.write(resp);
-
-    if (args.length > 2) {
-        const subCommand = args[2].toUpperCase();
-        const time = Number(args[3]);
-        if (subCommand === "PX") {
-            setTimeout(() => {
-                setMap[key] = null;
-            },
-                time);
-        }
-    }
 }
 
 export function handleGet(connection: net.Socket, args: string[], returnVal:boolean=false): string|void {
     console.error("GET command received");
 
     const key = args[0];
-    const value = setMap[key] ?? null;
+    const item = setMap[key] ?? null;
     
-    if (value === null) {
+    if (item === null) {
         const resp=`$-1\r\n`;
 
         if(returnVal) return resp;
         connection.write(resp);
-    } else {
-        const resp=`$${value.length}\r\n${value}\r\n`;
+        return;
+    } 
 
-        if(returnVal) return resp;
+    if (item.expiry !== undefined && item.expiry < Date.now()) {
+        // Key has expired, delete it and return null
+        delete setMap[key];
+        const resp = `$-1\r\n`;
+        if (returnVal) return resp;
         connection.write(resp);
+        return;
     }
+
+    const value = item.value;
+    const resp = `$${value.length}\r\n${value}\r\n`;
+    if (returnVal) return resp;
+    connection.write(resp);
 }
 
-export function getSetMap(): { [key: string]: string | null } {
+export function getSetMap(): { [key: string]: {value:string, expiry?:number} } {
     return setMap;
 }

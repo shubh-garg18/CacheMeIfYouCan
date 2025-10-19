@@ -1,16 +1,14 @@
 import * as net from "net";
-import { RESPparser } from "./Utils/RESPparser";
+import { RESPparser } from "./Utils/RESPparser.ts";
 import { executeCommand } from "./commands";
 import { getPending } from "./commands/lists";
+import { RDBsetup } from "./Utils/RDBparser.ts";
 
 console.log("Logs from your program will appear here!");
 
-// transactionQueue maps a client's socket connection to an array of command arrays (for transactions)
 export const transactionQueue = new Map<net.Socket, string[][]>();
 
-const mp:{[key:string]:string}={};
-const mp1=new Map<string,string>();
-
+RDBsetup();
 
 const server: net.Server = net.createServer((connection: net.Socket) => {
     connection.on("close", () => {
@@ -22,16 +20,20 @@ const server: net.Server = net.createServer((connection: net.Socket) => {
                 pending[listName].splice(idx, 1);
             }
         }
+        if(transactionQueue.has(connection)) transactionQueue.delete(connection);
     });
 
     connection.on("data", (chunk: Buffer) => {
-        const message: string = chunk.toString();
+        const message = chunk.toString();
         const parsed = RESPparser(message).value;
 
         if (!Array.isArray(parsed)) return;
 
         const command = (parsed[0] as string).toUpperCase();
-        const args = parsed.slice(1).map(a => a as string);
+        let args = parsed.slice(1).map(a => a as string);
+
+        if(command === "KEYS") args = [];
+
 
         if(transactionQueue.has(connection)){
             if (command === "MULTI") {
@@ -48,5 +50,6 @@ const server: net.Server = net.createServer((connection: net.Socket) => {
         executeCommand(command, connection, args);
     });
 });
+
 //
 server.listen(6379, "127.0.0.1");
