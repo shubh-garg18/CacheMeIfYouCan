@@ -8,6 +8,9 @@ import { getPendingReads } from "./commands/streams.ts";
 console.log("Logs from your program will appear here!");
 
 export const transactionQueue = new Map<net.Socket, string[][]>();
+export const channel = new Map<net.Socket, [string, number][]>();
+
+const allowedAfterSubscribe=["SUBSCRIBE","UNSUBSCRIBE","PSUBSCRIBE","PUNSUBSCRIBE","PING","QUIT"];
 
 RDBsetup();
 
@@ -22,6 +25,7 @@ const server: net.Server = net.createServer((connection: net.Socket) => {
             }
         }
         if(transactionQueue.has(connection)) transactionQueue.delete(connection);
+        if(channel.has(connection)) channel.delete(connection);
         const pendingReads=getPendingReads();
         for (let i = pendingReads.length - 1; i >= 0; i--) {
             if (pendingReads[i].connection === connection) {
@@ -53,6 +57,22 @@ const server: net.Server = net.createServer((connection: net.Socket) => {
                 return;
             }
         }
+        
+        if(channel.has(connection)){
+            if(command==="PING"){
+                connection.write(`*2\r\n$4\r\npong\r\n$0\r\n\r\n`);
+                return;
+            }
+            let flag=false;
+            for(const cmd of allowedAfterSubscribe){
+                if(cmd===command) flag=true;
+            }
+            if(!flag){
+                connection.write(`-ERR Can't execute '${command}'\r\n`);
+                return;
+            }
+        }
+
 
         executeCommand(command, connection, args);
     });

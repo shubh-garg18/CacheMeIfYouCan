@@ -38,8 +38,12 @@ import { handleType,
     handleXread
 } from "./streams";
 
-import  * as Types  from "../types";
+import { handlePublish, 
+    handleSubscribe, 
+    handleUnsubscribe
+} from "./pub-sub";
 
+import  * as Types  from "../types";
 
 const commandHandlers: { [key: string]: Types.CommandHandler } = {
     "PING": handlePing,
@@ -68,6 +72,9 @@ const commandHandlers: { [key: string]: Types.CommandHandler } = {
     "XADD":handleXadd,
     "XRANGE": handleXrange,
     "XREAD": handleXread,
+    "SUBSCRIBE": handleSubscribe,
+    "PUBLISH":handlePublish,
+    "UNSUBSCRIBE":handleUnsubscribe,
 };
 
 export function executeCommand(
