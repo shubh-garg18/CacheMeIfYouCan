@@ -9,6 +9,15 @@ export type StreamStruct = {
     };
 };
 
+export type PendingReadsStruct = {
+    connection: net.Socket;
+    keys: string[];
+    startIds: string[];
+    timeout: number;
+    startTime: number;
+    timeoutHandle?:NodeJS.Timeout;
+};
+
 
 //Lists → Sorted Sets → Transactions → RDB persistence → Streams → Pub/Sub → Replication
 

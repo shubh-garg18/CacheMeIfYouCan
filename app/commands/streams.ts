@@ -9,10 +9,15 @@ const sortedSet=getSortedSet();
 import { getList } from "./lists";
 const list=getList();
 
-import type {StreamStruct} from "../types.ts";
+import type {PendingReadsStruct, StreamStruct} from "../types.ts";
 const streamList: StreamStruct = {};
+const pendingReads: PendingReadsStruct[] = [];
 
-let prevId: [number, number] = [0, 0];
+const lastIds: { [stream: string]: [number, number] } = {};
+
+function bulk(str: string) { return `$${str.length}\r\n${str}\r\n`; }
+function array(len: number) { return `*${len}\r\n`; }
+
 
 export function handleType(connection:net.Socket, args:string[]):void{
     console.error(`TYPE command received!`);
@@ -20,16 +25,11 @@ export function handleType(connection:net.Socket, args:string[]):void{
     const key=args[0];
     let res="none";
 
-    if (setMap[key]) {
-        res="string";
-    } else if (list[key]) {
-        res="list";
-    } else if (sortedSet[key]) {
-       res="zset";
-    } else if(streamList[key]){
-       res="stream";
-    }
-
+    if (setMap[key]) res = "string";
+    else if (list[key]) res = "list";
+    else if (sortedSet[key]) res = "zset";
+    else if (streamList[key]) res = "stream";
+    
     connection.write(`+${res}\r\n`);
 }
 
@@ -79,6 +79,7 @@ export function handleXadd(connection: net.Socket, args: string[]): void {
         return;
     }
 
+    const prevId = lastIds[id] || [0, 0];
     if (timePart < prevId[0] || (timePart === prevId[0] && seqPart <= prevId[1])) {
         connection.write(`-ERR The ID specified in XADD is equal or smaller than the target stream top item\r\n`);
         return;
@@ -94,7 +95,45 @@ export function handleXadd(connection: net.Socket, args: string[]): void {
     }
 
     connection.write(`$${entryId.length}\r\n${entryId}\r\n`);
-    prevId = [timePart, seqPart];
+    lastIds[id] = [timePart, seqPart];
+
+    // Wake up any pending XREAD BLOCK clients
+    for (let i = pendingReads.length - 1; i >= 0; i--) {
+        const read = pendingReads[i];
+        const streamIndex = read.keys.indexOf(id);
+        if (streamIndex !== -1) {
+            const startId = read.startIds[streamIndex];
+            const entries = Object.keys(streamList[id])
+                .filter(entryId => entryId > startId)
+                .sort();
+
+            if (entries.length > 0) {
+                let resp=array(1);
+                resp+=array(2);
+                resp+=bulk(id);
+                resp+=array(entries.length);
+
+
+                for (const val of entries) {
+                    const fields = streamList[id][val];
+                    const fieldKeys = Object.keys(fields);
+                    const fieldCount = fieldKeys.length * 2;
+
+                    resp += array(2) + bulk(val) + array(fieldCount);
+
+                    for (const field of fieldKeys) {
+                        const value = fields[field];
+                        resp += bulk(field);
+                        resp += bulk(value);
+                    }
+                }
+
+                if(read.timeoutHandle) clearTimeout(read.timeoutHandle);
+                read.connection.write(resp);
+                pendingReads.splice(i, 1);
+            }
+        }
+    }
 }
 
 export function handleXrange(connection:net.Socket, args:string[]):void{
@@ -109,10 +148,11 @@ export function handleXrange(connection:net.Socket, args:string[]):void{
         return;
     }
 
+    if (!end) end = "+";
     if(end==="+") end=`9999999999999-9999999999999`;
 
     const startId=start.includes("-") ? start : `${start}-0`;
-    const endId=start.includes("-") ? end : `${end}-9999999999999`;
+    const endId=end.includes("-") ? end : `${end}-9999999999999`;
 
     const entries=Object.keys(streamList[id])
                         .filter(entryId => entryId>=startId && entryId<=endId)
@@ -125,15 +165,12 @@ export function handleXrange(connection:net.Socket, args:string[]):void{
         const fieldKeys=Object.keys(fields);
         const fieldCount=fieldKeys.length*2;
 
-        resp+=`*2\r\n`;
-        resp+=`$${val.length}\r\n${val}\r\n`;
-
-        resp+=`*${fieldCount}\r\n`;
+        resp += array(2)+bulk(val)+array(fieldCount);
 
         for(const field of fieldKeys) {
             const value=fields[field];
-            resp+=`$${field.length}\r\n${field}\r\n`;
-            resp+=`$${value.length}\r\n${value}\r\n`;
+            resp += bulk(field);
+            resp += bulk(value);
         }
     }
 
@@ -143,23 +180,23 @@ export function handleXrange(connection:net.Socket, args:string[]):void{
 function xreadStreams(connection:net.Socket, args:string[]):void{
     console.error(`XREAD STREAMS command received!`);
 
-    let n=1;
-    while(args[n]){
-        n++;
+    const streamsIndex = args.findIndex(a => (a ?? "").toString().toUpperCase() === "STREAMS");
+    if (streamsIndex === -1) {
+        connection.write(`-ERR wrong number of arguments for 'XREAD'\r\n`);
+        return;
     }
-    n--;
-    let keyStart=1, valStart=n/2+1;
 
-    let resp=`*${n/2}\r\n`;
+    const keys = args.slice(streamsIndex + 1, streamsIndex + 1 + (args.length - streamsIndex - 1) / 2);
+    const startIds = args.slice(streamsIndex + 1 + keys.length);
 
-    while(valStart<=n){
-        const id=args[keyStart];
-        const start=args[valStart];
+    let resp = `*${keys.length}\r\n`;
+
+    for (let i = 0; i < keys.length; i++) {
+        const id=keys[i];
+        const start=startIds[i];
 
         if(!streamList[id]) {
             resp += `*2\r\n$${id.length}\r\n${id}\r\n*0\r\n`;
-            keyStart++;
-            valStart++;
             continue;
         }
 
@@ -167,32 +204,27 @@ function xreadStreams(connection:net.Socket, args:string[]):void{
                             .filter(entryId => entryId>=start)
                             .sort();
 
-        resp+=`*2\r\n`;
+        resp += array(2);
+        resp += bulk(id);
 
-        resp+=`$${id.length}\r\n${id}\r\n`;
-        
-        resp+=`*${entries.length}\r\n`;
+        resp += array(entries.length);
 
         for(const val of entries){
             const fields=streamList[id][val];
             const fieldKeys=Object.keys(fields);
             const fieldCount=fieldKeys.length*2;
 
-            resp+=`*2\r\n`;
-            resp+=`$${val.length}\r\n${val}\r\n`;
+            resp += array(2);
+            resp += bulk(val);
 
-            resp+=`*${fieldCount}\r\n`;
+            resp += array(fieldCount);
 
             for(const field of fieldKeys){
-                const value=fields[field];
-                resp+=`$${field.length}\r\n${field}\r\n`;
-                resp+=`$${value.length}\r\n${value}\r\n`;
-            }            
+                const value = fields[field];
+                resp += bulk(field);
+                resp += bulk(value);
+            }
         }
-
-        
-        keyStart++;
-        valStart++;
     }
 
     connection.write(resp);
@@ -201,62 +233,54 @@ function xreadStreams(connection:net.Socket, args:string[]):void{
 function xreadBlock(connection:net.Socket, args:string[]):void{
     console.error(`XREAD BLOCK command received!`);
 
-    let n=1;
-    while(args[n]){
-        n++;
-    }
-    n--;
-    let keyStart=1, valStart=n/2+1;
-
-    let resp=`*${n/2}\r\n`;
-
-    while(valStart<=n){
-        const id=args[keyStart];
-        const start=args[valStart];
-
-        if(!streamList[id]) {
-            resp += `*2\r\n$${id.length}\r\n${id}\r\n*0\r\n`;
-            keyStart++;
-            valStart++;
-            continue;
-        }
-
-        const entries=Object.keys(streamList[id])
-                            .filter(entryId => entryId>=start)
-                            .sort();
-
-        resp+=`*2\r\n`;
-
-        resp+=`$${id.length}\r\n${id}\r\n`;
-        
-        resp+=`*${entries.length}\r\n`;
-
-        for(const val of entries){
-            const fields=streamList[id][val];
-            const fieldKeys=Object.keys(fields);
-            const fieldCount=fieldKeys.length*2;
-
-            resp+=`*2\r\n`;
-            resp+=`$${val.length}\r\n${val}\r\n`;
-
-            resp+=`*${fieldCount}\r\n`;
-
-            for(const field of fieldKeys){
-                const value=fields[field];
-                resp+=`$${field.length}\r\n${field}\r\n`;
-                resp+=`$${value.length}\r\n${value}\r\n`;
-            }            
-        }
-
-        
-        keyStart++;
-        valStart++;
+    const timeout=Number(args[1]);
+    const streamsIndex = args.findIndex(a => (a ?? "").toString().toUpperCase() === "STREAMS");
+    if (streamsIndex === -1) {
+        connection.write(`-ERR wrong number of arguments for 'XREAD'\r\n`);
+        return;
     }
 
-    connection.write(resp);
+    const keys = args.slice(streamsIndex + 1, streamsIndex + 1 + (args.length - streamsIndex - 1) / 2);
+    const startIdsRaw = args.slice(streamsIndex + 1 + keys.length);
+
+    const startIds = startIdsRaw.map((id, i) => {
+        if (id === "$") {
+            const key = keys[i];
+            const prevId = lastIds[key] || [0, 0];
+            return `${prevId[0]}-${prevId[1]}`;
+        }
+        return id;
+    });
+
+    let timeoutHandle;
+    if(timeout){
+        timeoutHandle = setTimeout(() => {
+            for (let i = pendingReads.length - 1; i >= 0; i--) {
+                if (pendingReads[i].connection === connection) {
+                    pendingReads[i].connection.write(`*-1\r\n`);
+                    pendingReads.splice(i, 1);
+                }
+            }
+        }, timeout);
+    }
+
+
+    pendingReads.push({
+        connection,
+        keys,
+        startIds,
+        timeout,
+        startTime: Date.now(),
+        timeoutHandle: timeoutHandle as unknown as NodeJS.Timeout
+    });
 }
 
 export function handleXread(connection:net.Socket, args:string[]):void{
-    if(args[0]==="STREAMS") xreadStreams(connection,args);
-    else if(args[0]==="BLOCK") xreadBlock(connection,args);
+    const first = (args[0] ?? "").toString().toUpperCase();
+    if(first==="BLOCK") xreadBlock(connection,args);
+    else xreadStreams(connection,args);
+}
+
+export function getPendingReads():PendingReadsStruct[]{
+    return pendingReads;
 }

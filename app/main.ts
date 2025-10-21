@@ -3,6 +3,7 @@ import { RESPparser } from "./Utils/RESPparser.ts";
 import { executeCommand } from "./commands";
 import { getPending } from "./commands/lists";
 import { RDBsetup } from "./Utils/RDBparser.ts";
+import { getPendingReads } from "./commands/streams.ts";
 
 console.log("Logs from your program will appear here!");
 
@@ -21,6 +22,12 @@ const server: net.Server = net.createServer((connection: net.Socket) => {
             }
         }
         if(transactionQueue.has(connection)) transactionQueue.delete(connection);
+        const pendingReads=getPendingReads();
+        for (let i = pendingReads.length - 1; i >= 0; i--) {
+            if (pendingReads[i].connection === connection) {
+                pendingReads.splice(i, 1);
+            }
+        }
     });
 
     connection.on("data", (chunk: Buffer) => {
