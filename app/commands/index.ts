@@ -50,6 +50,12 @@ import { handleInfo,
     handleWait
 } from "./replication";
 
+import { handleGeoadd, 
+    handleGeodist, 
+    handleGeopos, 
+    handleGeosearch
+} from "./geospatial";
+
 import  * as Types  from "../types";
 
 const commandHandlers: { [key: string]: Types.CommandHandler } = {
@@ -87,6 +93,10 @@ const commandHandlers: { [key: string]: Types.CommandHandler } = {
     "REPLCONF":handleReplconf,
     "PSYNC":handlePsync,
     "WAIT":handleWait,
+    "GEOADD":handleGeoadd,
+    "GEOPOS":handleGeopos,
+    "GEODIST":handleGeodist,
+    "GEOSEARCH":handleGeosearch
 };
 
 export function executeCommand(

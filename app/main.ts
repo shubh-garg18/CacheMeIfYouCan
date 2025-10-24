@@ -45,12 +45,11 @@ if(masterHost && masterPort){
     let replicationPhase: "handshake" | "rdb" | "sync" = "handshake";
 
     masterConnection.on("data", (data: Buffer) => {
-        let msg=data.toString();
-    
-        console.error(`Master replied: ${data.toString().trim()}`);
-
         if (replicationPhase === "handshake") {
-            const lines = data.toString().split(/\r?\n/).filter(Boolean);
+            const msg = data.toString();
+            console.error(`Master replied: ${msg.trim()}`);
+            
+            const lines = msg.split(/\r?\n/).filter(Boolean);
             const line = lines[0] || "";
 
             if (line.startsWith("+PONG")) {
@@ -68,28 +67,48 @@ if(masterHost && masterPort){
             return;
         }
 
-        console.log("Replica received:", JSON.stringify(msg));
-
-        if (msg.startsWith("$")) {
-            console.log("Found RDB data, parsing...");
-
-            const rdbLengthMatch = msg.match(/^\$(\d+)\r\n/);
-
-            if (rdbLengthMatch) {
-                const rdbLength = parseInt(rdbLengthMatch[1], 10);
-                const headerLength = rdbLengthMatch[0].length;
-
-                console.log(`RDB length: ${rdbLength}, header length: ${headerLength}`);
-
-                msg = msg.substring(headerLength + rdbLength);
-
-                if (!msg.startsWith("*") && msg.startsWith("3")) {
-                    msg = "*" + msg;
+        // Handle RDB and sync phases - work with Buffer to avoid encoding issues
+        let msg: string;
+        
+        if (replicationPhase === "rdb" && data[0] === 36) { // 36 is '$' in ASCII
+            // Parse the RDB bulk string header from buffer
+            let headerEnd = 0;
+            for (let i = 0; i < Math.min(20, data.length); i++) {
+                if (data[i] === 10) { // '\n'
+                    headerEnd = i + 1;
+                    break;
                 }
-
-                console.log("After RDB skip, msg:", JSON.stringify(msg));
             }
+            
+            const headerStr = data.toString('utf8', 0, headerEnd);
+            const match = headerStr.match(/^\$(\d+)\r\n/);
+            
+            if (match) {
+                const rdbLength = parseInt(match[1], 10);
+                const headerLength = match[0].length;
+                const totalSkip = headerLength + rdbLength;
+
+                console.error(`✅ Finished reading RDB, switching to sync phase`);
+                
+                // Convert only the part after RDB to string (avoiding binary data encoding issues)
+                if (totalSkip < data.length) {
+                    msg = data.toString('utf8', totalSkip);
+                } else {
+                    msg = "";
+                }
+                
+                replicationPhase = "sync";
+            } else {
+                msg = data.toString('utf8');
+            }
+        } else {
+            msg = data.toString('utf8');
         }
+
+        // Process commands in sync phase
+        if (msg.length === 0) return;
+        
+        console.log("Replica received:", JSON.stringify(msg));
 
         while (msg.startsWith("*")) {
             const lines = msg.split("\r\n");
@@ -118,9 +137,10 @@ if(masterHost && masterPort){
             const currentCommand = msg.substring(0, commandEnd);
 
             if (lines.length >= 6 && lines[1] === "$8" && lines[2].toLowerCase() === "replconf" && lines[4].toLowerCase() === "getack") {
-                masterConnection.write(`*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$${replicaOffset.toString().length}\r\n${replicaOffset}\r\n`);
+                const offsetStr = replicaOffset.toString();
+                masterConnection.write(`*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$${offsetStr.length}\r\n${offsetStr}\r\n`);
 
-                console.log(`Adding ${currentCommand.length} bytes to offset (was ${replicaOffset})`);
+                console.log(`Sending ACK with offset ${replicaOffset}`);
 
                 replicaOffset += currentCommand.length;
                 msg = msg.substring(commandEnd);
