@@ -3,7 +3,8 @@ import * as net from "net";
 import { handlePing, 
     handleEcho, 
     handleSet, 
-    handleGet 
+    handleGet, 
+    handleDel
 } from "./basics";
 
 import { handleRpush, 
@@ -43,6 +44,12 @@ import { handlePublish,
     handleUnsubscribe
 } from "./pub-sub";
 
+import { handleInfo, 
+    handlePsync, 
+    handleReplconf, 
+    handleWait
+} from "./replication";
+
 import  * as Types  from "../types";
 
 const commandHandlers: { [key: string]: Types.CommandHandler } = {
@@ -50,6 +57,7 @@ const commandHandlers: { [key: string]: Types.CommandHandler } = {
     "ECHO": handleEcho,
     "SET": handleSet,
     "GET": handleGet,
+    "DEL": handleDel,
     "RPUSH": handleRpush,
     "LRANGE": handleLrange,
     "LPUSH": handleLpush,
@@ -75,6 +83,10 @@ const commandHandlers: { [key: string]: Types.CommandHandler } = {
     "SUBSCRIBE": handleSubscribe,
     "PUBLISH":handlePublish,
     "UNSUBSCRIBE":handleUnsubscribe,
+    "INFO":handleInfo,
+    "REPLCONF":handleReplconf,
+    "PSYNC":handlePsync,
+    "WAIT":handleWait,
 };
 
 export function executeCommand(
@@ -85,17 +97,21 @@ export function executeCommand(
 ): string | void {
 
     const handler = commandHandlers[command];
-
     if (!handler) {
         const err = `-ERR unknown command '${command}'\r\n`;
         if (returnVal) return err;
         connection.write(err);
         return;
     }
-    
-    const result = handler(connection, args, returnVal);
-    if (returnVal) return result;
 
+    let result: string | void;
+    if ('length' in handler && handler.length === 4) { 
+        result = (handler as any)(connection, args, returnVal);
+    } else {
+        result = handler(connection, args, returnVal);
+    }
+
+    if (returnVal) return result;
 }
 
 export function getCommandHandlers(): { [key: string]: Types.CommandHandler } {

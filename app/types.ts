@@ -18,9 +18,6 @@ export type PendingReadsStruct = {
     timeoutHandle?:NodeJS.Timeout;
 };
 
-
-//Lists → Sorted Sets → Transactions → RDB persistence → Streams → Pub/Sub → Replication
-
 /*
 git add .
 git commit --allow-empty -m "[any message]"

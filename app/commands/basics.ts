@@ -14,7 +14,7 @@ export function handleEcho(connection: net.Socket, args: string[]): void {
     connection.write(`$${arg.length}\r\n${arg}\r\n`);
 }
 
-export function handleSet(connection: net.Socket, args: string[],returnVal:boolean=false): string|void {
+export function handleSet(connection: net.Socket, args: string[],returnVal=false): string|void {
     console.error("SET command received");
 
     const key = args[0], value = args[1];
@@ -32,6 +32,23 @@ export function handleSet(connection: net.Socket, args: string[],returnVal:boole
     const resp=`+OK\r\n`;
     if(returnVal) return resp;
 
+    connection.write(resp);
+}
+
+export function handleDel(connection: net.Socket,args: string[],returnVal=false):string|void {
+    console.error("DEL command received");
+
+    let count = 0;
+
+    for (const key of args) {
+        if (setMap[key]) {
+            delete setMap[key];
+            count++;
+        }
+    }
+
+    const resp = `:${count}\r\n`;
+    if (returnVal) return resp;
     connection.write(resp);
 }
 

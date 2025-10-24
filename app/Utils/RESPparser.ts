@@ -51,3 +51,7 @@ function arrayParser(input:string):Types.ParseResult{
 
     return {value:elements, length:offset};
 }
+
+export function encodeRESPArray(parts: string[]): string {
+    return `*${parts.length}\r\n` + parts.map(p => `$${p.length}\r\n${p}\r\n`).join('');
+} 
